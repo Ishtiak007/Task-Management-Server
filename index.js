@@ -26,52 +26,99 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
 
     const tasksCollection = client.db("taskManagementDB").collection("task");
 
     //  Task related api
-    app.post('/tasks',async(req,res)=>{
-        const task = req.body;
-        const result =await tasksCollection.insertOne(task);
-        res.send(result);
+    app.get("/tasks/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await tasksCollection
+        .find({ owner: email, status: 'todo' })
+        .sort({ deadline: 1 })
+        .toArray();
+      res.send(result);
     });
-    app.get('/tasks',async(req,res)=>{
-        let query = {}
-        if(req.query?.email){
-            query = {email : req.query.email}
-        }
-        const result = await tasksCollection.find(query).toArray();
-        res.send(result);
+
+    app.get("/ongoingTasks/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await tasksCollection
+        .find({ owner: email, status: "ongoing" })
+        .toArray();
+      res.send(result);
     });
-    app.get('/tasks/:id', async(req,res)=>{
-        const id = req.params.id;
-        const query = {_id: new ObjectId(id)}
-        const result = await tasksCollection.findOne(query);
-        res.send(result);
+    
+    app.get("/completedTasks/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await tasksCollection
+        .find({ owner: email, status: "completed" })
+        .toArray();
+      res.send(result);
     });
-    app.delete('/tasks/:id', async(req,res)=>{
-        const id = req.params.id;
-        const query = {_id: new ObjectId(id)}
-        const result = await tasksCollection.deleteOne(query);
-        res.send(result);
-    });
-    app.patch('/tasks/:id', async(req,res)=>{
-        const task = req.body;
-        const id = req.params.id;
-        const filter = {_id : new ObjectId(id)}
-        const updatedDoc={
-          $set:{
-            title : task.title,
-            description : task.description,
-            deadline: task.deadline,
-            priority: task.priority
-          }
-        }
-        const result = await tasksCollection.updateOne(filter,updatedDoc);
-        res.send(result);
+
+    app.get('/individual/:id', async(req,res)=>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const result = await tasksCollection.findOne(query)
+      res.send(result)
+      // console.log(result)
     })
+
+
+    app.post("/addTask", async (req, res) => {
+      const task = req.body;
+      const result = await tasksCollection.insertOne(task);
+      res.send(result);
+    });
+
+    app.put('/updateTask/:id', async(req,res)=>{
+      const id = req.params.id;
+      const query ={_id: new ObjectId(id)}
+      const options = {
+        upsert: true
+      }
+      const task = req.body;
+      const updateDoc = {
+        $set: task
+      }
+      const result = await tasksCollection.updateOne(query, updateDoc, options)
+      res.send(result)
+    })
+
+    app.delete("/deleteTask/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await tasksCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    app.put("/updateTaskStatus/:taskId", async (req, res) => {
+      const { taskId } = req.params;
+      const { newStatus } = req.body;
+
+      const taskToUpdate = await tasksCollection.findOne({
+        _id: new ObjectId(taskId),
+      });
+
+      if (!taskToUpdate) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+
+      try {
+        await tasksCollection.updateOne(
+          { _id: new ObjectId(taskId) },
+          { $set: { status: newStatus } }
+        );
+
+        return res
+          .status(200)
+          .json({ message: "Task status updated successfully" });
+      } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
 
 
 
